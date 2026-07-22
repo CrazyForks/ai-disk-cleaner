@@ -1,0 +1,84 @@
+name: Windows Release Build
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    name: Build Windows release
+    runs-on: windows-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+
+      - name: Read project version
+        id: project
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $project = Get-Content -Raw project.json | ConvertFrom-Json
+          $version = [string]$project.version
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'project.json must contain a non-empty version.'
+          }
+          if ($version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$') {
+            throw "project.json contains an invalid artifact version: $version"
+          }
+
+          $expectedTag = "v$version"
+          if ($env:RELEASE_TAG -ne $expectedTag) {
+            Write-Warning "Release tag '$env:RELEASE_TAG' differs from project version tag '$expectedTag'."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "artifact_name=ai-disk-cleaner-v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build Windows application
+        shell: pwsh
+        env:
+          ARTIFACT_NAME: ${{ steps.project.outputs.artifact_name }}
+        run: wails build -platform windows/amd64 -trimpath -o "$env:ARTIFACT_NAME.exe"
+
+      - name: Upload release asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          ARTIFACT_NAME: ${{ steps.project.outputs.artifact_name }}
+        run: |
+          $artifactPath = "build/bin/$env:ARTIFACT_NAME.exe"
+          gh release upload $env:RELEASE_TAG $artifactPath --clobber --repo $env:GITHUB_REPOSITORY
