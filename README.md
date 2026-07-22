@@ -1,5 +1,7 @@
 # ai-disk-cleaner
 
+[简体中文](./README-zh_CN.md)
+
 An AI-powered intelligent disk cleanup assistant.
 
 ![overview](./images/overview-en.png)
