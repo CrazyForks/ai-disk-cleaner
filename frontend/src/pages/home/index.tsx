@@ -1,4 +1,13 @@
-import { Button, Card, Chip, ListBox, ProgressBar, Select } from '@heroui/react'
+import {
+  Alert,
+  Button,
+  Card,
+  Chip,
+  Link,
+  ListBox,
+  ProgressBar,
+  Select,
+} from '@heroui/react'
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -14,6 +23,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useNavigate } from 'react-router'
 import ControlledNextUIFormWrapper from '@/components/ControlledNextUIFormWrapper'
+import { showDialog } from '@/components/DialogProvider'
 import useCleaningTask, {
   formatBytes,
   formatDate,
@@ -21,12 +31,14 @@ import useCleaningTask, {
 } from '@/hooks/useCleaningTask'
 import {
   GetDisks,
+  ListSettings,
   SelectDirectory,
   StartCleaning,
 } from '../../../wailsjs/go/main/App'
-import type { model } from '../../../wailsjs/go/models'
+import type { model, setting } from '../../../wailsjs/go/models'
 import clsx from 'clsx'
 import { useTranslation } from 'react-i18next'
+import { toastError } from '@/util/toast-error'
 
 type ScanValues = {
   target: string
@@ -35,6 +47,13 @@ type ScanValues = {
 
 const hasWailsRuntime = () =>
   typeof window !== 'undefined' && 'go' in window && 'runtime' in window
+
+const requiredLLMSettingKeys = ['llm.secret', 'llm.url', 'llm.model'] as const
+
+function hasCompleteLLMConfiguration(settings: setting.Setting[]) {
+  const values = new Map(settings.map((item) => [item.key, item.value.trim()]))
+  return requiredLLMSettingKeys.every((key) => Boolean(values.get(key)))
+}
 
 export default function HomePage() {
   const { i18n, t } = useTranslation()
@@ -48,6 +67,8 @@ export default function HomePage() {
     })
   const scanTarget = useWatch({ control, name: 'target' })
   const [isSelectingDirectory, setIsSelectingDirectory] = useState(false)
+  const [isCheckingLLM, setIsCheckingLLM] = useState(false)
+  const [isLLMConfigured, setIsLLMConfigured] = useState<boolean | null>(null)
   const [isStarting, setIsStarting] = useState(false)
   const [startError, setStartError] = useState('')
   const [disks, setDisks] = useState<model.DiskInfo[]>([])
@@ -96,6 +117,28 @@ export default function HomePage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!hasWailsRuntime()) {
+      return
+    }
+
+    let mounted = true
+    void ListSettings()
+      .then((settings) => {
+        if (mounted) {
+          setIsLLMConfigured(hasCompleteLLMConfiguration(settings ?? []))
+        }
+      })
+      .catch((reason: unknown) => {
+        if (mounted) {
+          toastError(reason, t('home.llmConfigCheckFailed'))
+        }
+      })
+    return () => {
+      mounted = false
+    }
+  }, [t])
+
   const handleSelectDirectory = async (onChange: (path: string) => void) => {
     setIsSelectingDirectory(true)
 
@@ -116,6 +159,30 @@ export default function HomePage() {
   }
 
   const handleStartCleaning = async () => {
+    if (hasWailsRuntime()) {
+      setIsCheckingLLM(true)
+      try {
+        const configured = hasCompleteLLMConfiguration(
+          (await ListSettings()) ?? [],
+        )
+        setIsLLMConfigured(configured)
+        if (!configured) {
+          showDialog({
+            title: t('home.llmNotConfiguredDialogTitle'),
+            message: t('home.llmNotConfiguredDialogMessage'),
+            confirmBtnText: t('home.goToSettings'),
+            onConfirm: () => navigate('/settings'),
+          })
+          return
+        }
+      } catch (reason: unknown) {
+        toastError(reason, t('home.llmConfigCheckFailed'))
+        return
+      } finally {
+        setIsCheckingLLM(false)
+      }
+    }
+
     const fieldsToValidate: (keyof ScanValues)[] =
       scanTarget === 'directory' ? ['target', 'directory'] : ['target']
 
@@ -157,6 +224,21 @@ export default function HomePage() {
 
   return (
     <div className="space-y-6">
+      {isLLMConfigured === false && (
+        <Alert status="warning" className="bg-warning/10">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('home.llmNotConfigured')}</Alert.Title>
+            <Alert.Description>
+              {t('home.llmNotConfiguredDescription')}{' '}
+              <Link onPress={() => navigate('/settings')}>
+                {t('home.goToSettings')}
+              </Link>
+            </Alert.Description>
+          </Alert.Content>
+        </Alert>
+      )}
+
       <section
         className={`from-accent/10 via-accent/5 to-success/10 relative flex overflow-hidden rounded-3xl bg-gradient-to-br p-8 ${
           scanTarget === 'directory' ? 'min-h-[30rem]' : 'min-h-80'
@@ -244,11 +326,11 @@ export default function HomePage() {
 
             <Button
               className="h-12 shrink-0 gap-2 rounded-xl px-6"
-              isDisabled={isTaskRunning || isStarting}
+              isDisabled={isTaskRunning || isStarting || isCheckingLLM}
               variant="primary"
               onPress={() => void handleStartCleaning()}
             >
-              {isStarting ? (
+              {isStarting || isCheckingLLM ? (
                 <LoaderCircle
                   aria-hidden="true"
                   className="animate-spin"
@@ -257,7 +339,11 @@ export default function HomePage() {
               ) : (
                 <ScanSearch aria-hidden="true" size={18} strokeWidth={1.9} />
               )}
-              {isStarting ? t('home.creatingTask') : t('home.startClean')}
+              {isCheckingLLM
+                ? t('home.checkingLLMConfiguration')
+                : isStarting
+                  ? t('home.creatingTask')
+                  : t('home.startClean')}
             </Button>
           </div>
 
