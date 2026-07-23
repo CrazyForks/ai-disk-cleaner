@@ -2,8 +2,10 @@ package setting
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	settingmodel "ai-disk-cleanner/backend/data/models/setting"
 )
@@ -18,6 +20,7 @@ var supportedSettingKeys = map[string]struct{}{
 	"llm.url":          {},
 	"llm.model":        {},
 	"llm.max-token":    {},
+	"llm.extra-body":   {},
 	"record.max.count": {},
 }
 
@@ -39,6 +42,16 @@ func validateSettings(settings []settingmodel.Setting) error {
 			value, err := strconv.ParseInt(item.Value, 10, 64)
 			if err != nil || value <= 0 {
 				return fmt.Errorf("%s must be a positive integer", item.Key)
+			}
+		}
+		if item.Key == "llm.extra-body" {
+			value := strings.TrimSpace(item.Value)
+			if value == "" {
+				continue
+			}
+			var extraBody map[string]any
+			if err := json.Unmarshal([]byte(value), &extraBody); err != nil || extraBody == nil {
+				return fmt.Errorf("%s must be a JSON object", item.Key)
 			}
 		}
 	}

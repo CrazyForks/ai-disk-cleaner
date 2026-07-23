@@ -265,7 +265,7 @@ func TestSettingDefaultsAndSave(t *testing.T) {
 	for _, item := range settings {
 		got[item.Key] = item.Value
 	}
-	if len(got) != 5 || got["llm.max-token"] != "50000" || got["record.max.count"] != "10" {
+	if len(got) != 6 || got["llm.max-token"] != "50000" || got["llm.extra-body"] != "" || got["record.max.count"] != "10" {
 		t.Fatalf("default settings = %#v", got)
 	}
 
@@ -274,6 +274,7 @@ func TestSettingDefaultsAndSave(t *testing.T) {
 		{Key: "llm.url", Value: "https://example.com/v1"},
 		{Key: "llm.model", Value: "model"},
 		{Key: "llm.max-token", Value: "64000"},
+		{Key: "llm.extra-body", Value: `{"temperature":0.7}`},
 		{Key: "record.max.count", Value: "20"},
 	}
 	if err := store.SaveSettings(context.Background(), updated); err != nil {
@@ -296,7 +297,7 @@ func TestSettingDefaultsAndSave(t *testing.T) {
 	for _, item := range settings {
 		got[item.Key] = item.Value
 	}
-	if len(got) != 5 {
+	if len(got) != 6 {
 		t.Fatalf("settings after removing llm.key = %#v", got)
 	}
 	for _, want := range updated {

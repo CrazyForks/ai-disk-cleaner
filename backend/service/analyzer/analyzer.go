@@ -60,17 +60,26 @@ func (analyzer *Service) Analyze(
 			return nil, err
 		}
 
+		params := openai.ChatCompletionNewParams{
+			Messages:  messages,
+			Model:     config.model,
+			Tools:     llmTools,
+			MaxTokens: openai.Int(config.maxTokens),
+			StreamOptions: openai.ChatCompletionStreamOptionsParam{
+				IncludeUsage: openai.Bool(true),
+			},
+		}
+		extraFields := make(map[string]any, len(config.extraBody)+1)
+		for key, value := range config.extraBody {
+			extraFields[key] = value
+		}
+		if len(extraFields) > 0 {
+			params.SetExtraFields(extraFields)
+		}
+
 		stream := client.Chat.Completions.NewStreaming(
 			ctx,
-			openai.ChatCompletionNewParams{
-				Messages:  messages,
-				Model:     config.model,
-				Tools:     llmTools,
-				MaxTokens: openai.Int(config.maxTokens),
-				StreamOptions: openai.ChatCompletionStreamOptionsParam{
-					IncludeUsage: openai.Bool(true),
-				},
-			},
+			params,
 		)
 		accumulator := openai.ChatCompletionAccumulator{}
 		for stream.Next() {

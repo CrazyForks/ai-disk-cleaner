@@ -5,6 +5,7 @@ import {
   Link,
   ListBox,
   Select,
+  TextArea,
   toast,
 } from '@heroui/react'
 import {
@@ -33,6 +34,7 @@ type SettingValues = {
   llmURL: string
   llmModel: string
   llmMaxToken: string
+  llmExtraBody: string
   recordMaxCount: string
 }
 
@@ -42,6 +44,7 @@ const initialValues: SettingValues = {
   llmURL: '',
   llmModel: '',
   llmMaxToken: '50000',
+  llmExtraBody: '',
   recordMaxCount: '10',
 }
 
@@ -61,6 +64,7 @@ function valuesFromSettings(
     llmURL: values.get('llm.url') ?? '',
     llmModel: values.get('llm.model') ?? '',
     llmMaxToken: values.get('llm.max-token') ?? '50000',
+    llmExtraBody: values.get('llm.extra-body') ?? '',
     recordMaxCount: values.get('record.max.count') ?? '10',
   }
 }
@@ -71,6 +75,7 @@ function settingsFromValues(values: SettingValues): setting.Setting[] {
     { key: 'llm.url', value: values.llmURL.trim() },
     { key: 'llm.model', value: values.llmModel.trim() },
     { key: 'llm.max-token', value: values.llmMaxToken.trim() },
+    { key: 'llm.extra-body', value: values.llmExtraBody.trim() },
     { key: 'record.max.count', value: values.recordMaxCount.trim() },
   ]
 }
@@ -284,6 +289,37 @@ export default function SettingsPage() {
               type="number"
             />
           </ControlledNextUIFormWrapper>
+          <div className="col-span-2">
+            <ControlledNextUIFormWrapper
+              control={control}
+              description={t('settings.llmExtraBody.description')}
+              label={t('settings.llmExtraBody.label')}
+              name="llmExtraBody"
+              rules={{
+                validate: (value) => {
+                  if (!value.trim()) {
+                    return true
+                  }
+                  try {
+                    const parsed: unknown = JSON.parse(value)
+                    return (
+                      (typeof parsed === 'object' &&
+                        parsed !== null &&
+                        !Array.isArray(parsed)) ||
+                      t('settings.llmExtraBody.invalid')
+                    )
+                  } catch {
+                    return t('settings.llmExtraBody.invalid')
+                  }
+                },
+              }}
+            >
+              <TextArea
+                disabled={isSaving}
+                placeholder='{"thinking": {"type": "disabled"}}'
+              />
+            </ControlledNextUIFormWrapper>
+          </div>
         </Card.Content>
       </Card>
 
