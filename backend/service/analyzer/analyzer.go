@@ -13,16 +13,21 @@ import (
 	"github.com/openai/openai-go/v3"
 )
 
-// Analyzer implements the LLM analysis service with an OpenAI-compatible API.
-type Analyzer struct {
+// Service implements the LLM analysis service with an OpenAI-compatible API.
+type Service struct {
 	settings settingStore
 }
 
-func NewAnalyzer(settings settingStore) *Analyzer {
-	return &Analyzer{settings: settings}
+// NewService creates the analyzer service for the central service manager.
+func NewService(settings settingStore) *Service {
+	return newService(settings)
 }
 
-func (analyzer *Analyzer) Analyze(
+func newService(settings settingStore) *Service {
+	return &Service{settings: settings}
+}
+
+func (analyzer *Service) Analyze(
 	ctx context.Context,
 	tree *modelscanner.FileTree,
 	language string,

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	appctx "ai-disk-cleanner/backend/ctx"
 	migrationmodel "ai-disk-cleanner/backend/data/models/migration"
 )
 
@@ -30,7 +31,12 @@ type Service struct {
 	mu      sync.Mutex
 }
 
-func NewService(ctx context.Context, store migrationStore) *Service {
+// NewService creates the migration service for the central service manager.
+func NewService(store migrationStore) *Service {
+	return newService(appctx.GetContext(), store)
+}
+
+func newService(ctx context.Context, store migrationStore) *Service {
 	return &Service{
 		ctx:     ctx,
 		store:   store,

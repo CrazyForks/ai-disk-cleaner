@@ -3,6 +3,7 @@ package setting
 import (
 	"context"
 
+	appctx "ai-disk-cleanner/backend/ctx"
 	settingmodel "ai-disk-cleanner/backend/data/models/setting"
 )
 
@@ -12,7 +13,12 @@ type Service struct {
 	store settingStore
 }
 
-func NewService(ctx context.Context, store settingStore) *Service {
+// NewService creates the setting service for the central service manager.
+func NewService(store settingStore) *Service {
+	return newService(appctx.GetContext(), store)
+}
+
+func newService(ctx context.Context, store settingStore) *Service {
 	return &Service{ctx: ctx, store: store}
 }
 

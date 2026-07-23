@@ -34,7 +34,7 @@ func TestCleanupOnStartupUsesConfiguredRecordLimit(t *testing.T) {
 	store := &fakeStore{settings: []settingmodel.Setting{
 		{Key: recordMaxCountKey, Value: "7"},
 	}}
-	service := NewService(context.Background(), store)
+	service := newService(context.Background(), store)
 
 	if err := service.CleanupOnStartup(); err != nil {
 		t.Fatalf("CleanupOnStartup() error = %v", err)
@@ -51,7 +51,7 @@ func TestCleanupOnStartupRejectsInvalidRecordLimit(t *testing.T) {
 	store := &fakeStore{settings: []settingmodel.Setting{
 		{Key: recordMaxCountKey, Value: "invalid"},
 	}}
-	service := NewService(context.Background(), store)
+	service := newService(context.Background(), store)
 
 	if err := service.CleanupOnStartup(); err == nil {
 		t.Fatal("CleanupOnStartup() error = nil, want validation error")

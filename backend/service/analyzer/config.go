@@ -24,7 +24,7 @@ type llmConfig struct {
 	maxTokens int64
 }
 
-func (analyzer *Analyzer) loadLLMConfig(ctx context.Context) (llmConfig, error) {
+func (analyzer *Service) loadLLMConfig(ctx context.Context) (llmConfig, error) {
 	if analyzer.settings == nil {
 		return llmConfig{}, errors.New("load LLM configuration: setting store is nil")
 	}
