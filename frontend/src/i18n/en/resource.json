@@ -150,6 +150,11 @@
     "llmService": "LLM Service",
     "llmServiceDesc": "Config LLM models, it's used to parse the file system tree",
     "maxTokenInOneConversation": "Max token in conversation",
+    "llmExtraBody": {
+      "label": "LLM Extra Body",
+      "description": "An optional JSON object will be incorporated into the body of each LLM request. If you are using deepseek-v4 or another model that has think mode enabled by default, please disable it via a parameter, as think mode will severely slow down the analysis.",
+      "invalid": "Enter a valid JSON object"
+    },
     "reportBug": "Report BUG",
     "language": {
       "title": "Language",

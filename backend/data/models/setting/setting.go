@@ -32,6 +32,7 @@ var defaultSettings = []Setting{
 	{Key: "llm.url", Value: ""},
 	{Key: "llm.model", Value: ""},
 	{Key: "llm.max-token", Value: "50000"},
+	{Key: "llm.extra-body", Value: ""},
 	{Key: "record.max.count", Value: "10"},
 }
 

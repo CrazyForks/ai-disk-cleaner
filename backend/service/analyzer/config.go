@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -22,6 +23,7 @@ type llmConfig struct {
 	baseURL   string
 	model     string
 	maxTokens int64
+	extraBody map[string]any
 }
 
 func (analyzer *Service) loadLLMConfig(ctx context.Context) (llmConfig, error) {
@@ -54,6 +56,12 @@ func (analyzer *Service) loadLLMConfig(ctx context.Context) (llmConfig, error) {
 	config.maxTokens, err = strconv.ParseInt(strings.TrimSpace(values["llm.max-token"]), 10, 64)
 	if err != nil || config.maxTokens <= 0 {
 		return llmConfig{}, errors.New("load LLM configuration: llm.max-token must be a positive integer")
+	}
+	extraBody := strings.TrimSpace(values["llm.extra-body"])
+	if extraBody != "" {
+		if err := json.Unmarshal([]byte(extraBody), &config.extraBody); err != nil || config.extraBody == nil {
+			return llmConfig{}, errors.New("load LLM configuration: llm.extra-body must be a JSON object")
+		}
 	}
 	return config, nil
 }

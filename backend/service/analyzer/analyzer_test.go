@@ -32,11 +32,12 @@ func TestAnalyzerStreamsTextAndReturnsUsage(t *testing.T) {
 		var body struct {
 			Model     string `json:"model"`
 			MaxTokens int64  `json:"max_tokens"`
+			Seed      int64  `json:"seed"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Errorf("decode request: %v", err)
 		}
-		if body.Model != "database-model" || body.MaxTokens != 4321 {
+		if body.Model != "database-model" || body.MaxTokens != 4321 || body.Seed != 42 {
 			t.Errorf("request config = %#v", body)
 		}
 		writer.Header().Set("Content-Type", "text/event-stream")
@@ -55,6 +56,7 @@ func TestAnalyzerStreamsTextAndReturnsUsage(t *testing.T) {
 		{Key: "llm.url", Value: server.URL},
 		{Key: "llm.model", Value: "database-model"},
 		{Key: "llm.max-token", Value: "4321"},
+		{Key: "llm.extra-body", Value: `{"seed":42}`},
 	}})
 	var deltas strings.Builder
 	result, err := analyzer.Analyze(
@@ -87,6 +89,7 @@ func TestLoadLLMConfigRejectsMissingAndUnreadableSettings(t *testing.T) {
 			{Key: "llm.url", Value: "https://example.com"},
 			{Key: "llm.model", Value: "model"},
 			{Key: "llm.max-token", Value: "50000"},
+			{Key: "llm.extra-body", Value: ""},
 		}})
 		if _, err := analyzer.loadLLMConfig(context.Background()); err == nil ||
 			!strings.Contains(err.Error(), "llm.secret") {
@@ -99,6 +102,20 @@ func TestLoadLLMConfigRejectsMissingAndUnreadableSettings(t *testing.T) {
 		analyzer := newService(&analyzerSettingStore{err: storeErr})
 		if _, err := analyzer.loadLLMConfig(context.Background()); !errors.Is(err, storeErr) {
 			t.Fatalf("loadLLMConfig() error = %v, want %v", err, storeErr)
+		}
+	})
+
+	t.Run("invalid extra body", func(t *testing.T) {
+		analyzer := newService(&analyzerSettingStore{settings: []setting.Setting{
+			{Key: "llm.secret", Value: "secret"},
+			{Key: "llm.url", Value: "https://example.com"},
+			{Key: "llm.model", Value: "model"},
+			{Key: "llm.max-token", Value: "50000"},
+			{Key: "llm.extra-body", Value: "[]"},
+		}})
+		if _, err := analyzer.loadLLMConfig(context.Background()); err == nil ||
+			!strings.Contains(err.Error(), "llm.extra-body") {
+			t.Fatalf("loadLLMConfig() error = %v", err)
 		}
 	})
 }
