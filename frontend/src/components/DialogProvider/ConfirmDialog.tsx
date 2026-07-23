@@ -1,4 +1,4 @@
-import { AlertDialog, Button, useOverlayState } from '@heroui/react'
+import { AlertDialog, Button, Spinner, useOverlayState } from '@heroui/react'
 
 import React, { useImperativeHandle, useState } from 'react'
 import { isPromise } from '@/util/common'
@@ -80,12 +80,16 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = (props) => {
               </Button>
             )}
             <Button
-              slot="close"
               onPress={onConfirm}
               isPending={isLoading}
               variant={config.color === 'danger' ? 'danger' : 'tertiary'}
             >
-              {config.confirmBtnText}
+              {({ isPending }) => (
+                <>
+                  {isPending ? <Spinner color="current" size="sm" /> : null}
+                  {config.confirmBtnText}
+                </>
+              )}
             </Button>
           </AlertDialog.Footer>
         </AlertDialog.Dialog>

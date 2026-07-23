@@ -1,5 +1,6 @@
 import { Button, Card, Checkbox, Label } from '@heroui/react'
 import type { Selection } from '@heroui/react'
+import type { cleaner } from '../../../../wailsjs/go/models'
 import { ArrowLeft } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
@@ -9,6 +10,7 @@ import LLMOutput from './LLMOutput'
 import ScanProgressHeader from './ScanProgressHeader'
 import ScanResultStats from './ScanResultStats'
 import TrashFileTable from './TrashFileTable'
+import DeleteFailuresDrawer from './DeleteFailuresDrawer'
 import { showDialog } from '@/components/DialogProvider'
 import ControlledNextUIFormWrapper from '@/components/ControlledNextUIFormWrapper'
 import { useForm } from 'react-hook-form'
@@ -25,6 +27,11 @@ export default function CleanupDetailPage() {
     useCleaningTask()
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteFailures, setDeleteFailures] = useState<cleaner.DeleteFailure[]>(
+    [],
+  )
+  const [keepOriginalDirectoriesForRetry, setKeepOriginalDirectoriesForRetry] =
+    useState(true)
   const recordID = Number(id)
   const currentTask = task?.id === recordID ? task : null
   const record = records.find((item) => item.id === recordID)
@@ -35,6 +42,7 @@ export default function CleanupDetailPage() {
 
   useEffect(() => {
     setSelectedPaths(new Set())
+    setDeleteFailures([])
   }, [recordID])
 
   const handleDelete = async (paths: string[] = Array.from(selectedPaths)) => {
@@ -49,7 +57,7 @@ export default function CleanupDetailPage() {
     }
     let keepOriginalDirectories = true
     showDialog({
-      title: '删除文件',
+      title: t('cleanup.detail.deleteDialogTitle'),
       message: (
         <DeleteConfirmation
           count={pathsToDelete.length}
@@ -62,12 +70,23 @@ export default function CleanupDetailPage() {
       onConfirm: async () => {
         setIsDeleting(true)
         try {
-          await DeleteTrashFiles(
+          setDeleteFailures([])
+          setKeepOriginalDirectoriesForRetry(keepOriginalDirectories)
+          const failures = await DeleteTrashFiles(
             record.id,
             pathsToDelete,
             keepOriginalDirectories,
           )
-          const deletedPaths = new Set(pathsToDelete)
+          setDeleteFailures(failures)
+          const failedPaths = failures.map((failure) => failure.path)
+          const deletedPaths = new Set(
+            pathsToDelete.filter((path) => {
+              const candidatePath = resolveCandidatePath(record.path, path)
+              return !failedPaths.some((failedPath) =>
+                isSameOrDescendantPath(failedPath, candidatePath, record.path),
+              )
+            }),
+          )
           setSelectedPaths(
             (current) =>
               new Set(
@@ -76,12 +95,32 @@ export default function CleanupDetailPage() {
           )
           await refreshRecords()
         } catch (reason) {
-          toastError(reason, '删除失败')
+          toastError(reason, t('cleanup.detail.deleteFailed'))
         } finally {
           setIsDeleting(false)
         }
       },
     })
+  }
+
+  const handleRetrySuccess = async (path: string) => {
+    setDeleteFailures((current) =>
+      current.filter((failure) => failure.path !== path),
+    )
+    setSelectedPaths(
+      (current) =>
+        new Set(
+          Array.from(current).filter(
+            (selectedPath) =>
+              !isSameOrDescendantPath(
+                path,
+                resolveCandidatePath(record?.path ?? '', selectedPath),
+                record?.path ?? '',
+              ),
+          ),
+        ),
+    )
+    await refreshRecords()
   }
 
   const handleSelectionChange = (keys: Selection) => {
@@ -145,8 +184,54 @@ export default function CleanupDetailPage() {
         </Card>
       )}
 
+      <DeleteFailuresDrawer
+        failures={deleteFailures}
+        keepOriginalDirectories={keepOriginalDirectoriesForRetry}
+        recordID={recordID}
+        onClose={() => setDeleteFailures([])}
+        onRetrySuccess={handleRetrySuccess}
+      />
+
       {error && <p className="text-danger text-sm">{error}</p>}
     </div>
+  )
+}
+
+function resolveCandidatePath(rootPath: string, candidatePath: string) {
+  if (
+    candidatePath.startsWith('/') ||
+    /^[A-Za-z]:[\\/]/.test(candidatePath) ||
+    /^[\\/]{2}/.test(candidatePath)
+  ) {
+    return candidatePath
+  }
+  const separator = rootPath.includes('\\') ? '\\' : '/'
+  return `${rootPath.replace(/[\\/]+$/, '')}${separator}${candidatePath.replace(
+    /^[\\/]+/,
+    '',
+  )}`
+}
+
+function comparablePath(path: string, rootPath: string) {
+  const normalized = path.replace(/\\/g, '/').replace(/\/{2,}/g, '/')
+  return /^[A-Za-z]:[\\/]/.test(rootPath)
+    ? normalized.toLowerCase()
+    : normalized
+}
+
+function isSameOrDescendantPath(
+  path: string,
+  parentPath: string,
+  rootPath: string,
+) {
+  const comparable = comparablePath(path, rootPath).replace(/\/+$/, '')
+  const comparableParent = comparablePath(parentPath, rootPath).replace(
+    /\/+$/,
+    '',
+  )
+  return (
+    comparable === comparableParent ||
+    comparable.startsWith(`${comparableParent}/`)
   )
 }
 
@@ -163,13 +248,14 @@ function DeleteConfirmation({
   count,
   onKeepOriginalDirectoriesChange,
 }: DeleteConfirmationProps) {
+  const { t } = useTranslation()
   const { control } = useForm<DeleteConfirmationValues>({
     defaultValues: { keepOriginalDirectories: true },
   })
 
   return (
     <div className="space-y-4">
-      <p>确定删除选中的 {count} 个文件或目录吗？此操作无法撤销。</p>
+      <p>{t('cleanup.detail.deleteConfirmation', { count })}</p>
       <ControlledNextUIFormWrapper
         control={control}
         name="keepOriginalDirectories"
@@ -186,7 +272,7 @@ function DeleteConfirmation({
               <Checkbox.Control>
                 <Checkbox.Indicator />
               </Checkbox.Control>
-              <Label>保留原始目录</Label>
+              <Label>{t('cleanup.detail.keepOriginalDirectories')}</Label>
             </Checkbox.Content>
           </Checkbox>
         )}

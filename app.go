@@ -142,9 +142,9 @@ func (a *App) ListCleaningRecords() ([]cleaningrecord.CleaningRecord, error) {
 	return a.cleaningService.ListCleaningRecords()
 }
 
-func (a *App) DeleteTrashFiles(recordID int64, paths []string, keepOriginalDirectories bool) error {
+func (a *App) DeleteTrashFiles(recordID int64, paths []string, keepOriginalDirectories bool) ([]cleaner.DeleteFailure, error) {
 	if err := a.ready(); err != nil {
-		return err
+		return nil, err
 	}
 	return a.cleaningService.DeleteTrashFiles(recordID, paths, keepOriginalDirectories)
 }

@@ -271,13 +271,13 @@ func TestServiceDeletesOnlyRecordedTrashFilesInsideScanRoot(t *testing.T) {
 	service.tree = &modelscanner.FileTree{RootPath: root}
 	service.treeSnapshot = &CleaningTaskSnapshot{ID: 1, Path: root}
 
-	if err := service.DeleteTrashFiles(1, []string{"unknown.tmp"}, false); err == nil {
+	if _, err := service.DeleteTrashFiles(1, []string{"unknown.tmp"}, false); err == nil {
 		t.Fatal("unrecorded path was accepted")
 	}
 	if _, err := os.Stat(target); err != nil {
 		t.Fatalf("validation failure touched target: %v", err)
 	}
-	if err := service.DeleteTrashFiles(1, []string{"cache.tmp"}, false); err != nil {
+	if _, err := service.DeleteTrashFiles(1, []string{"cache.tmp"}, false); err != nil {
 		t.Fatalf("DeleteTrashFiles() error = %v", err)
 	}
 	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
@@ -290,8 +290,83 @@ func TestServiceDeletesOnlyRecordedTrashFilesInsideScanRoot(t *testing.T) {
 	if len(record.TrashFiles) != 1 || !record.TrashFiles[0].IsDeleted || record.FreedSize != 5 {
 		t.Fatalf("record after delete = %#v", record)
 	}
-	if err := service.DeleteTrashFiles(1, []string{"cache.tmp"}, false); err == nil {
+	if _, err := service.DeleteTrashFiles(1, []string{"cache.tmp"}, false); err == nil {
 		t.Fatal("already deleted candidate was accepted")
+	}
+}
+
+func TestServiceDeletesTrashFileSelectedByResolvedPath(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "cache.tmp")
+	if err := os.WriteFile(target, []byte("cache"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := newTestStore(t)
+	storedRecord := &cleaningrecord.CleaningRecord{
+		ID:   1,
+		Path: root,
+		TrashFiles: []cleaningrecord.TrashFile{{
+			Name: "cache", Path: "cache.tmp", Size: 5, Level: cleaningrecord.LOW,
+		}},
+		TopUsages: make([]cleaningrecord.DiskUsage, 0),
+		State:     cleaningrecord.CLEANING_STATE_DONE,
+	}
+	if err := store.CreateCleaningRecord(context.Background(), storedRecord); err != nil {
+		t.Fatalf("CreateCleaningRecord() error = %v", err)
+	}
+	service := NewServiceWithScanner(context.Background(), store, nil, nil, nil)
+
+	failures, err := service.DeleteTrashFiles(1, []string{target}, false)
+	if err != nil {
+		t.Fatalf("DeleteTrashFiles() error = %v", err)
+	}
+	if len(failures) != 0 {
+		t.Fatalf("DeleteTrashFiles() failures = %#v", failures)
+	}
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("target still exists: %v", err)
+	}
+}
+
+func TestServiceContinuesDeletingAfterFileFailure(t *testing.T) {
+	root := t.TempDir()
+	validTarget := filepath.Join(root, "cache.tmp")
+	if err := os.WriteFile(validTarget, []byte("cache"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outsidePath := filepath.Join(t.TempDir(), "outside.tmp")
+	store := newTestStore(t)
+	storedRecord := &cleaningrecord.CleaningRecord{
+		ID:   1,
+		Path: root,
+		TrashFiles: []cleaningrecord.TrashFile{
+			{Name: "outside", Path: outsidePath, Size: 7, Level: cleaningrecord.LOW},
+			{Name: "cache", Path: "cache.tmp", Size: 5, Level: cleaningrecord.LOW},
+		},
+		TopUsages: make([]cleaningrecord.DiskUsage, 0),
+		State:     cleaningrecord.CLEANING_STATE_DONE,
+	}
+	if err := store.CreateCleaningRecord(context.Background(), storedRecord); err != nil {
+		t.Fatalf("CreateCleaningRecord() error = %v", err)
+	}
+	service := NewServiceWithScanner(context.Background(), store, nil, nil, nil)
+
+	failures, err := service.DeleteTrashFiles(1, []string{outsidePath, "cache.tmp"}, false)
+	if err != nil {
+		t.Fatalf("DeleteTrashFiles() error = %v", err)
+	}
+	if len(failures) != 1 || failures[0].Path != outsidePath || failures[0].Message == "" {
+		t.Fatalf("DeleteTrashFiles() failures = %#v", failures)
+	}
+	if _, err := os.Stat(validTarget); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("valid target still exists: %v", err)
+	}
+	record, err := store.GetCleaningRecord(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetCleaningRecord() error = %v", err)
+	}
+	if record.TrashFiles[0].IsDeleted || !record.TrashFiles[1].IsDeleted || record.FreedSize != 5 {
+		t.Fatalf("record after partial delete = %#v", record)
 	}
 }
 
@@ -318,11 +393,51 @@ func TestServiceRejectsDeletingTrashFilesFromHistoricalRecord(t *testing.T) {
 	service.tree = &modelscanner.FileTree{RootPath: root}
 	service.treeSnapshot = &CleaningTaskSnapshot{ID: 2, Path: root}
 
-	if err := service.DeleteTrashFiles(1, []string{"cache.tmp"}, false); err == nil {
+	if _, err := service.DeleteTrashFiles(1, []string{"cache.tmp"}, false); err == nil {
 		t.Fatal("historical record was accepted")
 	}
 	if _, err := os.Stat(target); err != nil {
 		t.Fatalf("historical record deletion touched target: %v", err)
+	}
+}
+
+func TestRemoveTrashTargetContinuesAfterChildFailure(t *testing.T) {
+	target := t.TempDir()
+	childContents := map[string]string{
+		"first":  "123",
+		"failed": "12345",
+		"last":   "1234567",
+	}
+	for name, content := range childContents {
+		childPath := filepath.Join(target, name)
+		if err := os.Mkdir(childPath, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(childPath, "data"), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removedPaths := make([]string, 0, 3)
+	failures, freedSize := removeTrashTargetWith(target, info, true, func(path string) error {
+		removedPaths = append(removedPaths, path)
+		if filepath.Base(path) == "failed" {
+			return errors.New("access denied")
+		}
+		return nil
+	})
+
+	if len(removedPaths) != 3 {
+		t.Fatalf("remove calls = %#v", removedPaths)
+	}
+	if len(failures) != 1 || failures[0].Path != filepath.Join(target, "failed") || failures[0].Message != "access denied" {
+		t.Fatalf("remove failures = %#v", failures)
+	}
+	if freedSize != int64(len(childContents["first"])+len(childContents["last"])) {
+		t.Fatalf("freed size = %d", freedSize)
 	}
 }
 
@@ -357,7 +472,7 @@ func TestServiceKeepsSelectedDirectoryAndDeletesItsContents(t *testing.T) {
 	service.tree = &modelscanner.FileTree{RootPath: root}
 	service.treeSnapshot = &CleaningTaskSnapshot{ID: 1, Path: root}
 
-	if err := service.DeleteTrashFiles(1, []string{"cache"}, true); err != nil {
+	if _, err := service.DeleteTrashFiles(1, []string{"cache"}, true); err != nil {
 		t.Fatalf("DeleteTrashFiles() error = %v", err)
 	}
 	entries, err := os.ReadDir(target)

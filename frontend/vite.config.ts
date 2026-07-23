@@ -24,6 +24,6 @@ export default defineConfig({
     },
   },
   define: {
-    __APP_VERSION__: project.version,
+    __APP_VERSION__: `'${project.version}'`,
   },
 })

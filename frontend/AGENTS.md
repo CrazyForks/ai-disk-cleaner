@@ -81,3 +81,7 @@ try {
 ## 用户确认
 
 当你需要一个弹框来向用户寻求确认时，你应该使用 `showDialog` 方法，它在 `import { showDialog } from '@/components/DialogProvider'`
+
+## 国际化
+
+每次编写代码，必须提供国际化翻译，相关文件夹在 `frontend/src/i18n`，国际化 key 前缀尽量跟随路由。

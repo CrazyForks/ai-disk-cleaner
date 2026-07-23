@@ -45,6 +45,20 @@ export namespace cleaner {
 		    return a;
 		}
 	}
+	export class DeleteFailure {
+	    path: string;
+	    message: string;
+
+	    static createFrom(source: any = {}) {
+	        return new DeleteFailure(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.message = source["message"];
+	    }
+	}
 
 }
 
