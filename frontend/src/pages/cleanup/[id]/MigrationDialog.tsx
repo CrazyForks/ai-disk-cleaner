@@ -45,24 +45,6 @@ type MigrationStep = {
   label: string
 }
 
-const migrationSteps: MigrationStep[] = [
-  {
-    description: i18n.t('cleanup.detail.migrationStep1Desc'),
-    icon: Copy,
-    label: i18n.t('cleanup.detail.migrationStep1'),
-  },
-  {
-    description: i18n.t('cleanup.detail.migrationStep2Desc'),
-    icon: Trash2,
-    label: i18n.t('cleanup.detail.migrationStep2'),
-  },
-  {
-    description: i18n.t('cleanup.detail.migrationStep3Desc'),
-    icon: Link,
-    label: i18n.t('cleanup.detail.migrationStep3'),
-  },
-]
-
 const initialStatuses = (): StepStatus[] => ['pending', 'pending', 'pending']
 
 export default function MigrationDialog({
@@ -152,6 +134,27 @@ export default function MigrationDialog({
         throw new Error('Unknown Step: ' + index)
     }
   }
+
+  const migrationSteps: MigrationStep[] = useMemo(
+    () => [
+      {
+        description: t('cleanup.detail.migrationStep1Desc'),
+        icon: Copy,
+        label: t('cleanup.detail.migrationStep1'),
+      },
+      {
+        description: t('cleanup.detail.migrationStep2Desc'),
+        icon: Trash2,
+        label: t('cleanup.detail.migrationStep2'),
+      },
+      {
+        description: t('cleanup.detail.migrationStep3Desc'),
+        icon: Link,
+        label: t('cleanup.detail.migrationStep3'),
+      },
+    ],
+    [t],
+  )
 
   const runFromStep = async (
     startIndex: number,
@@ -289,6 +292,7 @@ export default function MigrationDialog({
                 {migrationSteps.map((step, index) => (
                   <MigrationStepItem
                     key={step.label}
+                    index={index}
                     error={stepErrors[index]}
                     isLast={index === migrationSteps.length - 1}
                     status={statuses[index]}
@@ -351,22 +355,25 @@ function MigrationStepItem({
   isLast,
   status,
   step,
+  index,
 }: {
+  index: number
   error: string
   isLast: boolean
   status: StepStatus
   step: MigrationStep
 }) {
   const StepIcon = step.icon
+
   return (
-    <li className="relative flex gap-3 pb-4 last:pb-0">
+    <li className="relative flex items-center gap-3 pb-4 last:pb-0">
       {!isLast && (
-        <span className="bg-default-200 absolute top-8 left-3.5 h-[calc(100%-1.25rem)] w-px" />
+        <span className="bg-default absolute top-8 left-3.5 h-[calc(100%-1.25rem)] w-px" />
       )}
       <span
         className={[
           'relative z-10 flex size-7 shrink-0 items-center justify-center rounded-full',
-          status === 'success' && 'bg-success text-success-foreground',
+          status === 'success' && 'bg-success text-white',
           status === 'error' && 'bg-danger text-danger-foreground',
           status === 'running' && 'bg-primary text-primary-foreground',
           status === 'pending' && 'bg-default-100 text-muted',
@@ -386,7 +393,7 @@ function MigrationStepItem({
       </span>
       <div className="min-w-0 pt-0.5">
         <p className="text-sm font-medium">
-          {indexLabel(step)}
+          {index + 1}. {step.label}
           <span className="text-muted ml-2 text-xs font-normal">
             {statusLabel(status)}
           </span>
@@ -396,10 +403,6 @@ function MigrationStepItem({
       </div>
     </li>
   )
-}
-
-function indexLabel(step: MigrationStep) {
-  return `${migrationSteps.indexOf(step) + 1}. ${step.label}`
 }
 
 function statusLabel(status: StepStatus) {
