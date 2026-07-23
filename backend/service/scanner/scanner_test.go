@@ -15,7 +15,7 @@ import (
 func TestParseGDUContextHonoursCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := ParseGDUContext(ctx, t.TempDir(), nil); !errors.Is(err, context.Canceled) {
+	if _, err := NewService().ParseGDUContext(ctx, t.TempDir(), nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ParseGDUContext() error = %v, want context.Canceled", err)
 	}
 }
@@ -90,7 +90,7 @@ func TestParseGDUScansDirectoryInMemory(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	tree, err := ParseGDU(sourceDir)
+	tree, err := NewService().ParseGDU(sourceDir)
 	if err != nil {
 		t.Fatalf("ParseGDU() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestParseGDUFileScansDirectory(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	tree, err := ParseGDUFile(sourceDir)
+	tree, err := NewService().ParseGDUFile(sourceDir)
 	if err != nil {
 		t.Fatalf("ParseGDUFile() error = %v", err)
 	}
@@ -130,7 +130,7 @@ func TestParseGDUFileScansDirectory(t *testing.T) {
 }
 
 func TestParseGDURejectsInvalidPaths(t *testing.T) {
-	if _, err := ParseGDU(""); err == nil {
+	if _, err := NewService().ParseGDU(""); err == nil {
 		t.Fatal("ParseGDU() error = nil for empty directory path")
 	}
 
@@ -138,7 +138,7 @@ func TestParseGDURejectsInvalidPaths(t *testing.T) {
 	if err := os.WriteFile(filePath, nil, 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	if _, err := ParseGDU(filePath); err == nil {
+	if _, err := NewService().ParseGDU(filePath); err == nil {
 		t.Fatal("ParseGDU() error = nil for file path")
 	}
 }

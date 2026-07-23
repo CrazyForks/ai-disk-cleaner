@@ -50,7 +50,7 @@ func TestAnalyzerStreamsTextAndReturnsUsage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	analyzer := NewAnalyzer(&analyzerSettingStore{settings: []setting.Setting{
+	analyzer := newService(&analyzerSettingStore{settings: []setting.Setting{
 		{Key: "llm.secret", Value: "database-secret"},
 		{Key: "llm.url", Value: server.URL},
 		{Key: "llm.model", Value: "database-model"},
@@ -82,7 +82,7 @@ func TestAnalyzerStreamsTextAndReturnsUsage(t *testing.T) {
 
 func TestLoadLLMConfigRejectsMissingAndUnreadableSettings(t *testing.T) {
 	t.Run("missing value", func(t *testing.T) {
-		analyzer := NewAnalyzer(&analyzerSettingStore{settings: []setting.Setting{
+		analyzer := newService(&analyzerSettingStore{settings: []setting.Setting{
 			{Key: "llm.secret", Value: ""},
 			{Key: "llm.url", Value: "https://example.com"},
 			{Key: "llm.model", Value: "model"},
@@ -96,7 +96,7 @@ func TestLoadLLMConfigRejectsMissingAndUnreadableSettings(t *testing.T) {
 
 	t.Run("store error", func(t *testing.T) {
 		storeErr := errors.New("database unavailable")
-		analyzer := NewAnalyzer(&analyzerSettingStore{err: storeErr})
+		analyzer := newService(&analyzerSettingStore{err: storeErr})
 		if _, err := analyzer.loadLLMConfig(context.Background()); !errors.Is(err, storeErr) {
 			t.Fatalf("loadLLMConfig() error = %v, want %v", err, storeErr)
 		}

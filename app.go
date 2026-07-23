@@ -10,15 +10,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"ai-disk-cleanner/backend/data"
+	appctx "ai-disk-cleanner/backend/ctx"
 	"ai-disk-cleanner/backend/data/models/cleaningrecord"
 	"ai-disk-cleanner/backend/data/models/migration"
 	"ai-disk-cleanner/backend/data/models/setting"
-	"ai-disk-cleanner/backend/service/analyzer"
+	"ai-disk-cleanner/backend/service"
 	"ai-disk-cleanner/backend/service/cleaner"
-	"ai-disk-cleanner/backend/service/cleaninghistory"
-	migrationservice "ai-disk-cleanner/backend/service/migration"
-	settingservice "ai-disk-cleanner/backend/service/setting"
 
 	"github.com/pkg/browser"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -26,11 +23,8 @@ import (
 
 // App struct
 type App struct {
-	ctx              context.Context
-	cleaningService  *cleaner.Service
-	migrationService *migrationservice.Service
-	settingService   *settingservice.Service
-	startupError     error
+	ctx          context.Context
+	startupError error
 }
 
 // NewApp creates a new App application struct
@@ -42,34 +36,17 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	store, err := data.GetStore()
-	if err != nil {
-		a.startupError = err
-		return
-	}
-	if err := cleaninghistory.NewService(ctx, store).CleanupOnStartup(); err != nil {
-		a.startupError = err
-		return
-	}
-	a.cleaningService = cleaner.NewService(
-		ctx,
-		store.Store,
-		analyzer.NewAnalyzer(store),
-		func(eventName string, payload any) {
-			runtime.EventsEmit(ctx, eventName, payload)
-		},
-	)
-	a.migrationService = migrationservice.NewService(ctx, store)
-	a.settingService = settingservice.NewService(ctx, store)
+	appctx.SetContext(ctx)
+	a.startupError = service.Initialize()
 }
 
 func (a *App) shutdown(_ context.Context) {
-	if a.cleaningService == nil {
+	if a.startupError != nil || a.ctx == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = a.cleaningService.Close(ctx)
+	_ = service.GetCleanerService().Close(ctx)
 }
 
 // Greet returns a greeting for the given name
@@ -118,35 +95,35 @@ func (a *App) StartCleaning(path string, language string) (*cleaner.CleaningTask
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	return a.cleaningService.StartCleaning(path, language)
+	return service.GetCleanerService().StartCleaning(path, language)
 }
 
 func (a *App) StopCleaning(recordID int64) error {
 	if err := a.ready(); err != nil {
 		return err
 	}
-	return a.cleaningService.StopCleaning(recordID)
+	return service.GetCleanerService().StopCleaning(recordID)
 }
 
 func (a *App) GetActiveCleaning() (*cleaner.CleaningTaskSnapshot, error) {
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	return a.cleaningService.GetActiveCleaning(), nil
+	return service.GetCleanerService().GetActiveCleaning(), nil
 }
 
 func (a *App) ListCleaningRecords() ([]cleaningrecord.CleaningRecord, error) {
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	return a.cleaningService.ListCleaningRecords()
+	return service.GetCleanerService().ListCleaningRecords()
 }
 
 func (a *App) DeleteTrashFiles(recordID int64, paths []string, keepOriginalDirectories bool) ([]cleaner.DeleteFailure, error) {
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	return a.cleaningService.DeleteTrashFiles(recordID, paths, keepOriginalDirectories)
+	return service.GetCleanerService().DeleteTrashFiles(recordID, paths, keepOriginalDirectories)
 }
 
 func (a *App) CreateMigration(
@@ -157,7 +134,7 @@ func (a *App) CreateMigration(
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	return a.migrationService.Create(source, destinationDirectory, name)
+	return service.GetMigrationService().Create(source, destinationDirectory, name)
 }
 
 func (a *App) CopyMigrationSource(
@@ -168,14 +145,14 @@ func (a *App) CopyMigrationSource(
 	if err := a.ready(); err != nil {
 		return "", err
 	}
-	return a.migrationService.CopySource(source, destinationDirectory, name)
+	return service.GetMigrationService().CopySource(source, destinationDirectory, name)
 }
 
 func (a *App) DeleteMigrationSource(source string, dest string) error {
 	if err := a.ready(); err != nil {
 		return err
 	}
-	return a.migrationService.DeleteSource(source, dest)
+	return service.GetMigrationService().DeleteSource(source, dest)
 }
 
 func (a *App) CreateMigrationLink(
@@ -186,42 +163,42 @@ func (a *App) CreateMigrationLink(
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	return a.migrationService.CreateLink(source, dest, name)
+	return service.GetMigrationService().CreateLink(source, dest, name)
 }
 
 func (a *App) ListMigrations() ([]migration.Migration, error) {
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	return a.migrationService.List()
+	return service.GetMigrationService().List()
 }
 
 func (a *App) RestoreMigration(id int64) error {
 	if err := a.ready(); err != nil {
 		return err
 	}
-	return a.migrationService.Restore(id)
+	return service.GetMigrationService().Restore(id)
 }
 
 func (a *App) ListSettings() ([]setting.Setting, error) {
 	if err := a.ready(); err != nil {
 		return nil, err
 	}
-	return a.settingService.List()
+	return service.GetSettingService().List()
 }
 
 func (a *App) SaveSettings(settings []setting.Setting) error {
 	if err := a.ready(); err != nil {
 		return err
 	}
-	return a.settingService.Save(settings)
+	return service.GetSettingService().Save(settings)
 }
 
 func (a *App) ready() error {
 	if a.startupError != nil {
 		return fmt.Errorf("application startup: %w", a.startupError)
 	}
-	if a.cleaningService == nil || a.migrationService == nil || a.settingService == nil {
+	if a.ctx == nil {
 		return errors.New("application is not ready")
 	}
 	return nil

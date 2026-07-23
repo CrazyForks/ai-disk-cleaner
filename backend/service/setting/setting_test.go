@@ -22,7 +22,7 @@ func (store *fakeSettingStore) SaveSettings(_ context.Context, settings []settin
 
 func TestSaveValidatesAndPersistsSettings(t *testing.T) {
 	store := &fakeSettingStore{}
-	service := NewService(context.Background(), store)
+	service := newService(context.Background(), store)
 	settings := []settingmodel.Setting{
 		{Key: "llm.secret", Value: "secret"},
 		{Key: "llm.url", Value: "https://example.com/v1"},
@@ -41,7 +41,7 @@ func TestSaveValidatesAndPersistsSettings(t *testing.T) {
 
 func TestSaveRejectsInvalidMaxToken(t *testing.T) {
 	store := &fakeSettingStore{}
-	service := NewService(context.Background(), store)
+	service := newService(context.Background(), store)
 	settings := []settingmodel.Setting{
 		{Key: "llm.secret", Value: ""},
 		{Key: "llm.url", Value: ""},
@@ -60,7 +60,7 @@ func TestSaveRejectsInvalidMaxToken(t *testing.T) {
 
 func TestSaveRejectsInvalidRecordMaxCount(t *testing.T) {
 	store := &fakeSettingStore{}
-	service := NewService(context.Background(), store)
+	service := newService(context.Background(), store)
 	settings := []settingmodel.Setting{
 		{Key: "llm.secret", Value: ""},
 		{Key: "llm.url", Value: ""},

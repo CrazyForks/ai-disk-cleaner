@@ -68,7 +68,7 @@ func TestCreateRestoresSourceWhenSymlinkFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := NewService(context.Background(), newMemoryStore())
+	service := newService(context.Background(), newMemoryStore())
 	service.symlink = func(string, string) error {
 		return errors.New("simulated symlink failure")
 	}
@@ -100,7 +100,7 @@ func TestCreateAndRestoreFile(t *testing.T) {
 	}
 
 	store := newMemoryStore()
-	service := NewService(context.Background(), store)
+	service := newService(context.Background(), store)
 	record, err := service.Create(source, destinationDirectory, "moved.txt")
 	if err != nil {
 		if errors.Is(err, os.ErrPermission) {
@@ -144,7 +144,7 @@ func TestMigrationStepsSupportRetry(t *testing.T) {
 	}
 
 	store := newMemoryStore()
-	service := NewService(context.Background(), store)
+	service := newService(context.Background(), store)
 	dest, err := service.CopySource(source, destinationDirectory, "moved.txt")
 	if err != nil {
 		t.Fatalf("CopySource() error = %v", err)
@@ -197,7 +197,7 @@ func TestDeleteSourceRequiresCompletedCopyStep(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := NewService(context.Background(), newMemoryStore())
+	service := newService(context.Background(), newMemoryStore())
 	if err := service.DeleteSource(source, dest); err == nil {
 		t.Fatal("DeleteSource() error = nil without a completed copy step")
 	}

@@ -54,7 +54,7 @@ func TestServiceRunsTaskAndPersistsResult(t *testing.T) {
 	store := newTestStore(t)
 	done := make(chan CleaningTaskSnapshot, 1)
 	states := make([]string, 0, 3)
-	service := NewServiceWithScanner(
+	service := newServiceWithScanner(
 		context.Background(),
 		store,
 		fakeAnalyzer{analyze: func(
@@ -133,7 +133,7 @@ func TestServiceRunsTaskAndPersistsResult(t *testing.T) {
 func TestServiceRejectsConcurrentTaskAndCancelsScan(t *testing.T) {
 	store := newTestStore(t)
 	scanStarted := make(chan struct{})
-	service := NewServiceWithScanner(
+	service := newServiceWithScanner(
 		context.Background(),
 		store,
 		fakeAnalyzer{analyze: func(
@@ -191,7 +191,7 @@ func TestServiceRejectsConcurrentTaskAndCancelsScan(t *testing.T) {
 func TestServiceRetainsFailedAnalysisSnapshotWhileTreeExists(t *testing.T) {
 	store := newTestStore(t)
 	done := make(chan CleaningTaskSnapshot, 1)
-	service := NewServiceWithScanner(
+	service := newServiceWithScanner(
 		context.Background(),
 		store,
 		fakeAnalyzer{analyze: func(
@@ -267,7 +267,7 @@ func TestServiceDeletesOnlyRecordedTrashFilesInsideScanRoot(t *testing.T) {
 	if err := store.CreateCleaningRecord(context.Background(), storedRecord); err != nil {
 		t.Fatalf("CreateCleaningRecord() error = %v", err)
 	}
-	service := NewServiceWithScanner(context.Background(), store, nil, nil, nil)
+	service := newServiceWithScanner(context.Background(), store, nil, nil, nil)
 	service.tree = &modelscanner.FileTree{RootPath: root}
 	service.treeSnapshot = &CleaningTaskSnapshot{ID: 1, Path: root}
 
@@ -314,7 +314,7 @@ func TestServiceDeletesTrashFileSelectedByResolvedPath(t *testing.T) {
 	if err := store.CreateCleaningRecord(context.Background(), storedRecord); err != nil {
 		t.Fatalf("CreateCleaningRecord() error = %v", err)
 	}
-	service := NewServiceWithScanner(context.Background(), store, nil, nil, nil)
+	service := newServiceWithScanner(context.Background(), store, nil, nil, nil)
 
 	failures, err := service.DeleteTrashFiles(1, []string{target}, false)
 	if err != nil {
@@ -349,7 +349,7 @@ func TestServiceContinuesDeletingAfterFileFailure(t *testing.T) {
 	if err := store.CreateCleaningRecord(context.Background(), storedRecord); err != nil {
 		t.Fatalf("CreateCleaningRecord() error = %v", err)
 	}
-	service := NewServiceWithScanner(context.Background(), store, nil, nil, nil)
+	service := newServiceWithScanner(context.Background(), store, nil, nil, nil)
 
 	failures, err := service.DeleteTrashFiles(1, []string{outsidePath, "cache.tmp"}, false)
 	if err != nil {
@@ -389,7 +389,7 @@ func TestServiceRejectsDeletingTrashFilesFromHistoricalRecord(t *testing.T) {
 	if err := store.CreateCleaningRecord(context.Background(), storedRecord); err != nil {
 		t.Fatalf("CreateCleaningRecord() error = %v", err)
 	}
-	service := NewServiceWithScanner(context.Background(), store, nil, nil, nil)
+	service := newServiceWithScanner(context.Background(), store, nil, nil, nil)
 	service.tree = &modelscanner.FileTree{RootPath: root}
 	service.treeSnapshot = &CleaningTaskSnapshot{ID: 2, Path: root}
 
@@ -468,7 +468,7 @@ func TestServiceKeepsSelectedDirectoryAndDeletesItsContents(t *testing.T) {
 	if err := store.CreateCleaningRecord(context.Background(), storedRecord); err != nil {
 		t.Fatalf("CreateCleaningRecord() error = %v", err)
 	}
-	service := NewServiceWithScanner(context.Background(), store, nil, nil, nil)
+	service := newServiceWithScanner(context.Background(), store, nil, nil, nil)
 	service.tree = &modelscanner.FileTree{RootPath: root}
 	service.treeSnapshot = &CleaningTaskSnapshot{ID: 1, Path: root}
 

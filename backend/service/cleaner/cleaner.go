@@ -10,9 +10,12 @@ import (
 	"sync"
 	"time"
 
+	appctx "ai-disk-cleanner/backend/ctx"
 	"ai-disk-cleanner/backend/data/models/cleaningrecord"
 	modelscanner "ai-disk-cleanner/backend/model/scanner"
 	serviceScanner "ai-disk-cleanner/backend/service/scanner"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const (
@@ -81,16 +84,27 @@ type Service struct {
 	treeSnapshot *CleaningTaskSnapshot
 }
 
+// NewService creates the cleaner service for the central service manager.
 func NewService(
-	ctx context.Context,
 	store *cleaningrecord.Store,
 	analyzer Analyzer,
-	emit EventEmitter,
+	scanner *serviceScanner.Service,
 ) *Service {
-	return NewServiceWithScanner(ctx, store, analyzer, emit, serviceScanner.ParseGDUContext)
+	if scanner == nil {
+		panic("cleaner service: scanner is nil")
+	}
+	return newServiceWithScanner(
+		appctx.GetContext(),
+		store,
+		analyzer,
+		func(eventName string, payload any) {
+			runtime.EventsEmit(appctx.GetContext(), eventName, payload)
+		},
+		scanner.ParseGDUContext,
+	)
 }
 
-func NewServiceWithScanner(
+func newServiceWithScanner(
 	ctx context.Context,
 	store *cleaningrecord.Store,
 	analyzer Analyzer,
@@ -104,7 +118,7 @@ func NewServiceWithScanner(
 		emit = func(string, any) {}
 	}
 	if scan == nil {
-		scan = serviceScanner.ParseGDUContext
+		scan = serviceScanner.NewService().ParseGDUContext
 	}
 	return &Service{
 		ctx:      ctx,

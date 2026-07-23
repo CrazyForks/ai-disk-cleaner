@@ -24,3 +24,4 @@
 
 - frontend/AGENTS.md
 - backend/data/models/AGENTS.md
+- backend/service/AGENTS.md
