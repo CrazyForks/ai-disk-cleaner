@@ -32,7 +32,7 @@ func validateDirectory(directoryPath string) (string, error) {
 	return absolutePath, nil
 }
 
-func safeDeleteTarget(rootPath string, candidatePath string) (string, error) {
+func toAbsPath(rootPath string, candidatePath string) (string, error) {
 	root, err := filepath.Abs(rootPath)
 	if err != nil {
 		return "", err

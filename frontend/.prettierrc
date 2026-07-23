@@ -5,5 +5,5 @@
   "tabWidth": 2,
   "bracketSpacing": true,
   "tailwindFunctions": ["clsx"],
-  "endOfLine": "lf"
+  "endOfLine": "auto"
 }

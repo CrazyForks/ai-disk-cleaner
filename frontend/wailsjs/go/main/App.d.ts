@@ -14,7 +14,7 @@ export function CreateMigrationLink(arg1:string,arg2:string,arg3:string):Promise
 
 export function DeleteMigrationSource(arg1:string,arg2:string):Promise<void>;
 
-export function DeleteTrashFiles(arg1:number,arg2:Array<string>,arg3:boolean):Promise<void>;
+export function DeleteTrashFiles(arg1:number,arg2:Array<string>,arg3:boolean):Promise<Array<cleaner.DeleteFailure>>;
 
 export function GetActiveCleaning():Promise<cleaner.CleaningTaskSnapshot>;
 

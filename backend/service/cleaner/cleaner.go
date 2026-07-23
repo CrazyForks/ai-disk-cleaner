@@ -61,6 +61,12 @@ type LLMDelta struct {
 	Delta    string `json:"delta"`
 }
 
+// DeleteFailure describes a trash file that could not be deleted.
+type DeleteFailure struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
 // Service owns the process-wide cleaning task and the latest scanned tree.
 type Service struct {
 	ctx      context.Context
@@ -211,82 +217,187 @@ func (service *Service) DeleteTrashFiles(
 	recordID int64,
 	selectedPaths []string,
 	keepOriginalDirectories bool,
-) error {
+) ([]DeleteFailure, error) {
 	if len(selectedPaths) == 0 {
-		return errors.New("delete trash files: no files selected")
+		return nil, errors.New("delete trash files: no files selected")
 	}
 	service.mu.RLock()
 	defer service.mu.RUnlock()
 
 	record, err := service.store.GetCleaningRecord(service.ctx, recordID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	currentRootPath := record.Path
 
 	if !samePath(record.Path, currentRootPath) {
-		return fmt.Errorf("delete trash files for record %d: scan root does not match the current in-memory tree", recordID)
+		return nil, fmt.Errorf("delete trash files for record %d: scan root does not match the current in-memory tree", recordID)
+	}
+	knownCandidates := make(map[string]int, len(record.TrashFiles)*2)
+	for index, candidate := range record.TrashFiles {
+		knownCandidates[candidate.Path] = index
+		if target, targetErr := toAbsPath(record.Path, candidate.Path); targetErr == nil {
+			knownCandidates[target] = index
+		}
 	}
 	selected := make(map[string]struct{}, len(selectedPaths))
 	for _, path := range selectedPaths {
-		selected[path] = struct{}{}
-	}
-	knownCandidates := make(map[string]int, len(record.TrashFiles))
-	for index, candidate := range record.TrashFiles {
-		knownCandidates[candidate.Path] = index
-	}
-	for path := range selected {
 		candidateIndex, ok := knownCandidates[path]
+		if !ok && keepOriginalDirectories {
+			candidateIndex, ok = containingTrashCandidate(record, path)
+		}
 		if !ok {
-			return fmt.Errorf("delete trash file: path %q is not a candidate in record %d", path, recordID)
+			return nil, fmt.Errorf("delete trash file: path %q is not a candidate in record %d", path, recordID)
 		}
-		if record.TrashFiles[candidateIndex].IsDeleted {
-			return fmt.Errorf("delete trash file: path %q has already been deleted", path)
+		candidate := record.TrashFiles[candidateIndex]
+		if candidate.IsDeleted {
+			return nil, fmt.Errorf("delete trash file: path %q has already been deleted", candidate.Path)
 		}
-		if strings.ContainsAny(path, "*?[") {
-			return fmt.Errorf("delete trash file: glob path %q requires manual review", path)
+		if strings.ContainsAny(candidate.Path, "*?[") {
+			return nil, fmt.Errorf("delete trash file: glob path %q requires manual review", candidate.Path)
 		}
+		selected[candidate.Path] = struct{}{}
 	}
+
+	failures := make([]DeleteFailure, 0)
 	var freedSize int64
 	for index := range record.TrashFiles {
 		candidate := &record.TrashFiles[index]
 		if _, ok := selected[candidate.Path]; !ok {
 			continue
 		}
-		target, err := safeDeleteTarget(record.Path, candidate.Path)
+		target, err := toAbsPath(record.Path, candidate.Path)
 		if err != nil {
-			return err
+			failures = append(failures, DeleteFailure{Path: resolvedCandidatePath(record.Path, candidate.Path), Message: err.Error()})
+			continue
 		}
 		info, err := os.Lstat(target)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("delete trash file %q: %w", target, err)
+			failures = append(failures, DeleteFailure{Path: target, Message: err.Error()})
+			continue
 		}
 		if info != nil {
-			freedSize += candidate.Size
-			if err := removeTrashTarget(target, info, keepOriginalDirectories); err != nil {
-				return fmt.Errorf("delete trash file %q: %w", target, err)
+			deleteFailures, deletedSize := removeTrashTarget(target, info, keepOriginalDirectories)
+			freedSize += deletedSize
+			if len(deleteFailures) > 0 {
+				failures = append(failures, deleteFailures...)
+				continue
+			}
+			if !keepOriginalDirectories || !info.IsDir() {
+				freedSize += candidate.Size
 			}
 		}
 		candidate.IsDeleted = true
 	}
 	record.FreedSize += freedSize
-	return service.store.SaveDeletedTrashFiles(service.ctx, record)
+	if err := service.store.SaveDeletedTrashFiles(service.ctx, record); err != nil {
+		return failures, err
+	}
+	return failures, nil
 }
 
-func removeTrashTarget(target string, info os.FileInfo, keepOriginalDirectory bool) error {
+func containingTrashCandidate(record *cleaningrecord.CleaningRecord, requestedPath string) (int, bool) {
+	requestedTarget, err := filepath.Abs(requestedPath)
+	if err != nil {
+		return 0, false
+	}
+	candidateIndex := 0
+	longestTarget := -1
+	for index, candidate := range record.TrashFiles {
+		target, err := toAbsPath(record.Path, candidate.Path)
+		if err != nil {
+			continue
+		}
+		info, err := os.Lstat(target)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		relative, err := filepath.Rel(target, requestedTarget)
+		if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if len(target) > longestTarget {
+			candidateIndex = index
+			longestTarget = len(target)
+		}
+	}
+	return candidateIndex, longestTarget >= 0
+}
+
+func resolvedCandidatePath(rootPath string, candidatePath string) string {
+	target := candidatePath
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(rootPath, target)
+	}
+	absolutePath, err := filepath.Abs(target)
+	if err != nil {
+		return candidatePath
+	}
+	return absolutePath
+}
+
+func removeTrashTarget(target string, info os.FileInfo, keepOriginalDirectory bool) ([]DeleteFailure, int64) {
+	return removeTrashTargetWith(target, info, keepOriginalDirectory, os.RemoveAll)
+}
+
+func removeTrashTargetWith(
+	target string,
+	info os.FileInfo,
+	keepOriginalDirectory bool,
+	remove func(string) error,
+) ([]DeleteFailure, int64) {
 	if !keepOriginalDirectory || !info.IsDir() {
-		return os.RemoveAll(target)
+		if err := remove(target); err != nil {
+			return []DeleteFailure{{Path: target, Message: err.Error()}}, 0
+		}
+		return nil, 0
 	}
 	entries, err := os.ReadDir(target)
 	if err != nil {
-		return err
+		return []DeleteFailure{{Path: target, Message: err.Error()}}, 0
 	}
+	failures := make([]DeleteFailure, 0)
+	var freedSize int64
 	for _, entry := range entries {
-		if err := os.RemoveAll(filepath.Join(target, entry.Name())); err != nil {
-			return err
+		childPath := filepath.Join(target, entry.Name())
+		sizeBefore, sizeBeforeErr := trashTargetSize(childPath)
+		if err := remove(childPath); err != nil {
+			failures = append(failures, DeleteFailure{Path: childPath, Message: err.Error()})
+			if sizeBeforeErr == nil {
+				sizeAfter, sizeAfterErr := trashTargetSize(childPath)
+				switch {
+				case errors.Is(sizeAfterErr, os.ErrNotExist):
+					freedSize += sizeBefore
+				case sizeAfterErr == nil && sizeBefore > sizeAfter:
+					freedSize += sizeBefore - sizeAfter
+				}
+			}
+			continue
+		}
+		if sizeBeforeErr == nil {
+			freedSize += sizeBefore
 		}
 	}
-	return nil
+	return failures, freedSize
+}
+
+func trashTargetSize(target string) (int64, error) {
+	var size int64
+	err := filepath.WalkDir(target, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		size += info.Size()
+		return nil
+	})
+	return size, err
 }
 
 // Tree returns the latest completed scan tree.
