@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "ai-disk-cleanner",
+  "outputfilename": "ai-disk-cleanner",
+  "frontend:install": "pnpm install",
+  "frontend:build": "pnpm build",
+  "frontend:dev:watcher": "pnpm dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "vudsen",
+    "email": "xu2237803016@outlook.com"
+  }
+}
